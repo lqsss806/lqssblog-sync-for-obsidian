@@ -116,13 +116,11 @@ export default class LqssblogPlugin extends Plugin {
       });
       if (resp.status !== 200) return false;
 
-      // Extract token value from set-cookie: "token=eyJ...; Path=/; ..."
-      const setCookie = resp.headers["set-cookie"] as string | undefined;
-      if (!setCookie) return false;
-      const match = setCookie.match(/token=([^;]+)/);
-      if (!match) return false;
+      // Read token from response body (more reliable than set-cookie header)
+      const token = (resp.json as { token?: string })?.token;
+      if (!token) return false;
 
-      this.settings.token = match[1];
+      this.settings.token = token;
       await this.saveSettings();
       return true;
     } catch {
