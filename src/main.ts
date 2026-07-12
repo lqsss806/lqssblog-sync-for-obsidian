@@ -357,20 +357,21 @@ export default class LqssblogPlugin extends Plugin {
 
     await this.ensureSyncFolder();
 
-    let pushed = 0, pulled = 0, conflicts = 0, created = 0;
+    let pushed = 0, pulled = 0, conflicts = 0, created = 0, upToDate = 0;
     const processedIds = new Set<string>();
+    const BUFFER = 5_000;
 
     // Process all local files
     for (const file of this.app.vault.getMarkdownFiles()) {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
       const blogId = fm["blog-id"] as string | undefined;
-      const zone = fm["blog-zone"] as Zone | undefined;
 
       if (!blogId) {
-        // New local file: detect zone from path or frontmatter
+        // No blog-id yet: push if note has blog-zone OR is inside sync folder
         const detectedZone =
           (fm["blog-zone"] as Zone | undefined) ?? this.detectZoneFromPath(file.path);
-        if (detectedZone && file.path.startsWith(this.settings.syncFolder + "/")) {
+        const inSyncFolder = file.path.startsWith(this.settings.syncFolder + "/");
+        if (detectedZone && (inSyncFolder || fm["blog-zone"])) {
           const ok = await this.doPush(file, fm as Record<string, unknown>, undefined, detectedZone);
           if (ok) created++;
         }
@@ -379,36 +380,31 @@ export default class LqssblogPlugin extends Plugin {
 
       processedIds.add(blogId);
       const blogPost = blogMap.get(blogId);
-      if (!blogPost) continue; // post deleted on blog side — skip
+      if (!blogPost) continue;
 
       const syncedAt = fm["blog-synced-at"] as string | undefined;
       const lastSyncTime = syncedAt ? new Date(syncedAt).getTime() : 0;
       const blogUpdatedAt = new Date(blogPost.updatedAt).getTime();
       const localUpdatedAt = file.stat.mtime;
-      const BUFFER = 5_000; // 5s tolerance for clock skew
 
       const blogNewer = blogUpdatedAt > lastSyncTime + BUFFER;
       const localNewer = localUpdatedAt > lastSyncTime + BUFFER;
 
       if (blogNewer && localNewer) {
         conflicts++;
-        new Notice(
-          `lqssblog: ⚠ 冲突 —「${file.basename}」本地和远端都有更改，已跳过，请手动处理`
-        );
+        new Notice(`lqssblog: ⚠ 冲突 —「${file.basename}」本地和远端都有更改，已跳过`);
         continue;
       }
 
       if (localNewer) {
-        const ok = await this.doPush(
-          file,
-          fm as Record<string, unknown>,
-          blogId,
-          zone ?? (blogPost.zone as Zone)
-        );
+        const zone = (fm["blog-zone"] as Zone | undefined) ?? (blogPost.zone as Zone);
+        const ok = await this.doPush(file, fm as Record<string, unknown>, blogId, zone);
         if (ok) pushed++;
       } else if (blogNewer) {
         await this.app.vault.modify(file, buildNoteContent(blogPost));
         pulled++;
+      } else {
+        upToDate++;
       }
     }
 
@@ -423,9 +419,10 @@ export default class LqssblogPlugin extends Plugin {
     }
 
     const summary = [
-      `↑ 推送 ${pushed + created}`,
-      `↓ 拉取 ${pulled}`,
-      conflicts ? `⚠ ${conflicts} 个冲突` : "",
+      `↑ ${pushed + created}`,
+      `↓ ${pulled}`,
+      upToDate ? `✓ ${upToDate} 已是最新` : "",
+      conflicts ? `⚠ ${conflicts} 冲突` : "",
     ]
       .filter(Boolean)
       .join("   ");
