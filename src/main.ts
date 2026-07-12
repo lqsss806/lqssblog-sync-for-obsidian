@@ -247,7 +247,7 @@ export default class LqssblogPlugin extends Plugin {
     const title = (fm["title"] as string) || file.basename;
     const visibility = (fm["blog-visibility"] as Visibility) || "LOGIN_ONLY";
     const published = (fm["blog-published"] as boolean) ?? false;
-    const tags = parseTags(fm["blog-tags"]);
+    const tags = parseTags(fm["tags"]);
 
     const now = new Date().toISOString();
     const data = { title, content: body, zone, visibility, published, tags };
@@ -535,7 +535,7 @@ class PublishModal extends Modal {
     let zone: Zone = "ANIME";
     let visibility: Visibility = "LOGIN_ONLY";
     let published = false;
-    let tags = parseTags(fm["blog-tags"]).join(", ");
+    let tags = parseTags(fm["tags"]).join(", ");
 
     new Setting(contentEl)
       .setName("标题")
@@ -594,7 +594,7 @@ class PublishModal extends Modal {
             f["blog-zone"] = zone;
             f["blog-visibility"] = visibility;
             f["blog-published"] = published;
-            f["blog-tags"] = tagList;
+            f["tags"] = tagList;
           });
           await this.plugin.doPush(
             this.file,
@@ -603,7 +603,7 @@ class PublishModal extends Modal {
               "blog-zone": zone,
               "blog-visibility": visibility,
               "blog-published": published,
-              "blog-tags": tagList,
+              "tags": tagList,
             },
             undefined,
             zone
@@ -736,7 +736,7 @@ function buildNoteContent(post: BlogPost): string {
     `blog-published: ${post.published}`,
   ];
   if (tags.length) {
-    lines.push(`blog-tags: [${tags.map((t) => `"${t}"`).join(", ")}]`);
+    lines.push(`tags: [${tags.map((t) => `"${t}"`).join(", ")}]`);
   }
   lines.push(
     `blog-synced-at: "${new Date().toISOString()}"`,
