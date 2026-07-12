@@ -1,0 +1,10 @@
+{
+  "id": "lqssblog-sync",
+  "name": "lqssblog Sync",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "双向同步 Obsidian 笔记与 lqssblog 博客",
+  "author": "lqsss806",
+  "authorUrl": "https://lqssblog.serveblog.net",
+  "isDesktopOnly": false
+}
