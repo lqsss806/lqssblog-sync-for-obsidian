@@ -191,14 +191,18 @@ export default class LqssblogPlugin extends Plugin {
     visibility: Visibility;
     published: boolean;
     tags: string[];
-  }): Promise<BlogPost | null> {
+  }): Promise<{ post?: BlogPost; error?: string }> {
     const resp = await this.apiReq({
       url: `${this.settings.blogUrl}/api/posts`,
       method: "POST",
       body: JSON.stringify(data),
     });
-    if (resp.status !== 201) return null;
-    return (resp.json as { post: BlogPost }).post ?? null;
+    if (resp.status !== 201) {
+      let msg = "";
+      try { msg = resp.json?.error ?? ""; } catch { /* ignore */ }
+      return { error: `HTTP ${resp.status}${msg ? ": " + msg : ""}` };
+    }
+    return { post: (resp.json as { post: BlogPost }).post };
   }
 
   async updatePost(
@@ -211,13 +215,16 @@ export default class LqssblogPlugin extends Plugin {
       published: boolean;
       tags: string[];
     }
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; error?: string }> {
     const resp = await this.apiReq({
       url: `${this.settings.blogUrl}/api/posts/${id}`,
       method: "PUT",
       body: JSON.stringify(data),
     });
-    return resp.status === 200;
+    if (resp.status === 200) return { ok: true };
+    let msg = "";
+    try { msg = resp.json?.error ?? ""; } catch { /* ignore */ }
+    return { ok: false, error: `HTTP ${resp.status}${msg ? ": " + msg : ""}` };
   }
 
   // ===== Core Sync =====
@@ -267,18 +274,18 @@ export default class LqssblogPlugin extends Plugin {
     const data = { title, content: body, zone, visibility, published, tags };
 
     if (blogId) {
-      const ok = await this.updatePost(blogId, data);
-      if (!ok) {
-        new Notice(`lqssblog: ✗ 更新失败 —「${title}」`);
+      const result = await this.updatePost(blogId, data);
+      if (!result.ok) {
+        new Notice(`lqssblog: ✗ 更新失败 —「${title}」\n${result.error ?? ""}`, 8000);
         return false;
       }
     } else {
-      const post = await this.createPost(data);
-      if (!post) {
-        new Notice(`lqssblog: ✗ 发布失败 —「${title}」`);
+      const result = await this.createPost(data);
+      if (!result.post) {
+        new Notice(`lqssblog: ✗ 发布失败 —「${title}」\n${result.error ?? ""}`, 8000);
         return false;
       }
-      blogId = post.id;
+      blogId = result.post.id;
     }
 
     await this.app.fileManager.processFrontMatter(file, (f) => {
@@ -351,7 +358,12 @@ export default class LqssblogPlugin extends Plugin {
       return;
     }
 
-    new Notice("lqssblog: 开始双向同步…");
+    const allFiles = this.app.vault.getMarkdownFiles();
+    const withMeta = allFiles.filter((f) => {
+      const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+      return fm?.["blog-id"] || fm?.["blog-zone"] || this.detectZoneFromPath(f.path);
+    });
+    new Notice(`lqssblog: 开始同步… 扫描到 ${withMeta.length} 篇关联笔记`, 4000);
     const posts = await this.fetchMyPosts();
     const blogMap = new Map<string, BlogPost>(posts.map((p) => [p.id, p]));
 
