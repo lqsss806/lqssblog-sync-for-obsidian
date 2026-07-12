@@ -222,7 +222,17 @@ export default class LqssblogPlugin extends Plugin {
 
   // ===== Core Sync =====
 
-  /** Push a single note to the blog. Uses defaults if frontmatter not set. */
+  /** Detect zone from file path (blog/2/ → ANIME, blog/3/ → REAL, blog/4/ → FOUR). */
+  detectZoneFromPath(filePath: string): Zone | null {
+    for (const [zone, sub] of Object.entries(ZONE_SUBFOLDER) as [Zone, string][]) {
+      if (filePath.startsWith(`${this.settings.syncFolder}/${sub}/`)) {
+        return zone;
+      }
+    }
+    return null;
+  }
+
+  /** Push a single note. Zone priority: frontmatter > file path > settings default. */
   async pushNote(file: TFile): Promise<void> {
     if (!this.settings.username || !this.settings.password) {
       new Notice("lqssblog: 请先在插件设置里填写用户名和密码");
@@ -230,7 +240,10 @@ export default class LqssblogPlugin extends Plugin {
     }
 
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-    const zone = (fm["blog-zone"] as Zone | undefined) ?? this.settings.defaultZone;
+    const zone =
+      (fm["blog-zone"] as Zone | undefined) ??
+      this.detectZoneFromPath(file.path) ??
+      this.settings.defaultZone;
 
     await this.doPush(file, fm as Record<string, unknown>, fm["blog-id"] as string | undefined, zone);
   }
@@ -270,11 +283,14 @@ export default class LqssblogPlugin extends Plugin {
 
     await this.app.fileManager.processFrontMatter(file, (f) => {
       f["blog-id"] = blogId;
+      f["blog-zone"] = zone;
+      f["blog-visibility"] = visibility;
+      f["blog-published"] = published;
       f["blog-synced-at"] = now;
       f["blog-updated-at"] = now;
     });
 
-    new Notice(`lqssblog: ✓ 已推送「${title}」`);
+    new Notice(`lqssblog: ✓ 已推送「${title}」${published ? "" : "（草稿）"}`);
     return true;
   }
 
@@ -351,11 +367,11 @@ export default class LqssblogPlugin extends Plugin {
       const zone = fm["blog-zone"] as Zone | undefined;
 
       if (!blogId) {
-        // New local file in a zone subfolder with blog-zone set → push to create
-        const inZoneFolder =
-          zone && file.path.startsWith(this.zoneFolder(zone) + "/");
-        if (inZoneFolder) {
-          const ok = await this.doPush(file, fm as Record<string, unknown>, undefined, zone!);
+        // New local file: detect zone from path or frontmatter
+        const detectedZone =
+          (fm["blog-zone"] as Zone | undefined) ?? this.detectZoneFromPath(file.path);
+        if (detectedZone && file.path.startsWith(this.settings.syncFolder + "/")) {
+          const ok = await this.doPush(file, fm as Record<string, unknown>, undefined, detectedZone);
           if (ok) created++;
         }
         continue;
