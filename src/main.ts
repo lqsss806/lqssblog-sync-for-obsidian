@@ -268,7 +268,12 @@ export default class LqssblogPlugin extends Plugin {
     const title = (fm["title"] as string) || file.basename;
     const visibility = (fm["blog-visibility"] as Visibility) || this.settings.defaultVisibility;
     const published = (fm["blog-published"] as boolean) ?? this.settings.defaultPublished;
-    const tags = parseTags(fm["tags"]);
+
+    // Merge frontmatter tags + inline #tags from note body
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fmTags = parseTags(fm["tags"]);
+    const inlineTags = (cache?.tags ?? []).map((t) => t.tag.replace(/^#/, ""));
+    const tags = [...new Set([...fmTags, ...inlineTags])];
 
     const now = new Date().toISOString();
     const data = { title, content: body, zone, visibility, published, tags };
