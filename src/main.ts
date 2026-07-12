@@ -34,6 +34,9 @@ interface LqssblogSettings {
   password: string;
   syncFolder: string;
   token: string;
+  defaultZone: Zone;
+  defaultVisibility: Visibility;
+  defaultPublished: boolean;
 }
 
 const DEFAULT_SETTINGS: LqssblogSettings = {
@@ -42,6 +45,9 @@ const DEFAULT_SETTINGS: LqssblogSettings = {
   password: "",
   syncFolder: "blog",
   token: "",
+  defaultZone: "ANIME",
+  defaultVisibility: "LOGIN_ONLY",
+  defaultPublished: false,
 };
 
 const ZONE_SUBFOLDER: Record<Zone, string> = {
@@ -216,7 +222,7 @@ export default class LqssblogPlugin extends Plugin {
 
   // ===== Core Sync =====
 
-  /** Push a single note to the blog. Shows PublishModal if zone not set. */
+  /** Push a single note to the blog. Uses defaults if frontmatter not set. */
   async pushNote(file: TFile): Promise<void> {
     if (!this.settings.username || !this.settings.password) {
       new Notice("lqssblog: 请先在插件设置里填写用户名和密码");
@@ -224,12 +230,7 @@ export default class LqssblogPlugin extends Plugin {
     }
 
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-    const zone = fm["blog-zone"] as Zone | undefined;
-
-    if (!zone) {
-      new PublishModal(this.app, this, file).open();
-      return;
-    }
+    const zone = (fm["blog-zone"] as Zone | undefined) ?? this.settings.defaultZone;
 
     await this.doPush(file, fm as Record<string, unknown>, fm["blog-id"] as string | undefined, zone);
   }
@@ -245,8 +246,8 @@ export default class LqssblogPlugin extends Plugin {
     const body = stripFrontmatter(rawContent);
 
     const title = (fm["title"] as string) || file.basename;
-    const visibility = (fm["blog-visibility"] as Visibility) || "LOGIN_ONLY";
-    const published = (fm["blog-published"] as boolean) ?? false;
+    const visibility = (fm["blog-visibility"] as Visibility) || this.settings.defaultVisibility;
+    const published = (fm["blog-published"] as boolean) ?? this.settings.defaultPublished;
     const tags = parseTags(fm["tags"]);
 
     const now = new Date().toISOString();
@@ -678,6 +679,46 @@ class LqssblogSettingTab extends PluginSettingTab {
             this.plugin.settings.syncFolder = v.trim().replace(/\/$/, "");
             await this.plugin.saveSettings();
           })
+      );
+
+    containerEl.createEl("h3", { text: "推送默认值" });
+    containerEl.createEl("p", {
+      text: "推送没有 frontmatter 的笔记时使用这些默认值，无需手动填写。",
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
+      .setName("默认分区")
+      .addDropdown((d) => {
+        d.addOption("ANIME", "2");
+        d.addOption("REAL", "3");
+        d.addOption("FOUR", "4");
+        d.setValue(this.plugin.settings.defaultZone).onChange(async (v) => {
+          this.plugin.settings.defaultZone = v as Zone;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("默认可见性")
+      .addDropdown((d) => {
+        d.addOption("LOGIN_ONLY", "仅登录用户");
+        d.addOption("PUBLIC", "公开");
+        d.addOption("FRIENDS_ONLY", "仅好友");
+        d.setValue(this.plugin.settings.defaultVisibility).onChange(async (v) => {
+          this.plugin.settings.defaultVisibility = v as Visibility;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("默认直接发布")
+      .setDesc("关闭则保存为草稿")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.defaultPublished).onChange(async (v) => {
+          this.plugin.settings.defaultPublished = v;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
