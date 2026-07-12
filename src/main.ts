@@ -45,9 +45,9 @@ const DEFAULT_SETTINGS: LqssblogSettings = {
 };
 
 const ZONE_SUBFOLDER: Record<Zone, string> = {
-  ANIME: "anime",
-  REAL: "real",
-  FOUR: "four",
+  ANIME: "2",
+  REAL: "3",
+  FOUR: "4",
 };
 
 // ===== Plugin =====
@@ -669,7 +669,7 @@ class LqssblogSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("同步根文件夹")
-      .setDesc("文章按分区保存到子文件夹：blog/anime · blog/real · blog/four")
+      .setDesc("文章按分区保存到子文件夹：blog/2 · blog/3 · blog/4")
       .addText((t) =>
         t
           .setPlaceholder("blog")
