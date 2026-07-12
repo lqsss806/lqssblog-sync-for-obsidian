@@ -215,7 +215,7 @@ export default class LqssblogPlugin extends Plugin {
       published: boolean;
       tags: string[];
     }
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; status?: number; error?: string }> {
     const resp = await this.apiReq({
       url: `${this.settings.blogUrl}/api/posts/${id}`,
       method: "PUT",
@@ -224,7 +224,7 @@ export default class LqssblogPlugin extends Plugin {
     if (resp.status === 200) return { ok: true };
     let msg = "";
     try { msg = resp.json?.error ?? ""; } catch { /* ignore */ }
-    return { ok: false, error: `HTTP ${resp.status}${msg ? ": " + msg : ""}` };
+    return { ok: false, status: resp.status, error: `HTTP ${resp.status}${msg ? ": " + msg : ""}` };
   }
 
   // ===== Core Sync =====
@@ -276,10 +276,17 @@ export default class LqssblogPlugin extends Plugin {
     if (blogId) {
       const result = await this.updatePost(blogId, data);
       if (!result.ok) {
-        new Notice(`lqssblog: ✗ 更新失败 —「${title}」\n${result.error ?? ""}`, 8000);
-        return false;
+        if (result.status === 404) {
+          // Post deleted on blog — recreate it
+          blogId = undefined;
+        } else {
+          new Notice(`lqssblog: ✗ 更新失败 —「${title}」\n${result.error ?? ""}`, 8000);
+          return false;
+        }
       }
-    } else {
+    }
+
+    if (!blogId) {
       const result = await this.createPost(data);
       if (!result.post) {
         new Notice(`lqssblog: ✗ 发布失败 —「${title}」\n${result.error ?? ""}`, 8000);
