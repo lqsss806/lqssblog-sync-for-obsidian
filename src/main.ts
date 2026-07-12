@@ -546,9 +546,9 @@ class PublishModal extends Modal {
     new Setting(contentEl)
       .setName("分区")
       .addDropdown((d) => {
-        d.addOption("ANIME", "二次元（ANIME）");
-        d.addOption("REAL", "三次元（REAL）");
-        d.addOption("FOUR", "4频道（FOUR）");
+        d.addOption("ANIME", "2");
+        d.addOption("REAL", "3");
+        d.addOption("FOUR", "4");
         d.setValue(zone).onChange((v) => (zone = v as Zone));
       });
 
