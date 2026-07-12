@@ -101,10 +101,13 @@ export default class LqssblogPlugin extends Plugin {
 
   // ===== Auth =====
 
-  async login(): Promise<boolean> {
-    if (!this.settings.username || !this.settings.password) return false;
+  async login(): Promise<{ ok: boolean; reason: string }> {
+    if (!this.settings.username || !this.settings.password) {
+      return { ok: false, reason: "用户名或密码未填写" };
+    }
+    let resp: RequestUrlResponse;
     try {
-      const resp = await requestUrl({
+      resp = await requestUrl({
         url: `${this.settings.blogUrl}/api/auth/login`,
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,18 +117,25 @@ export default class LqssblogPlugin extends Plugin {
         }),
         throw: false,
       });
-      if (resp.status !== 200) return false;
-
-      // Read token from response body (more reliable than set-cookie header)
-      const token = (resp.json as { token?: string })?.token;
-      if (!token) return false;
-
-      this.settings.token = token;
-      await this.saveSettings();
-      return true;
-    } catch {
-      return false;
+    } catch (e) {
+      return { ok: false, reason: `网络错误: ${String(e)}` };
     }
+
+    if (resp.status !== 200) {
+      let msg = "";
+      try { msg = resp.json?.error ?? resp.text; } catch { msg = String(resp.status); }
+      return { ok: false, reason: `HTTP ${resp.status}: ${msg}` };
+    }
+
+    let token: string | undefined;
+    try { token = resp.json?.token; } catch { /* ignore */ }
+    if (!token) {
+      return { ok: false, reason: "响应中没有 token 字段" };
+    }
+
+    this.settings.token = token;
+    await this.saveSettings();
+    return { ok: true, reason: "登录成功" };
   }
 
   getHeaders(): Record<string, string> {
@@ -146,7 +156,7 @@ export default class LqssblogPlugin extends Plugin {
       throw: false,
     });
     if (resp.status === 401 && !retried) {
-      const ok = await this.login();
+      const { ok } = await this.login();
       if (ok) return this.apiReq(options, true);
     }
     return resp;
@@ -658,16 +668,16 @@ class LqssblogSettingTab extends PluginSettingTab {
       .addButton((btn) =>
         btn.setButtonText("测试").onClick(async () => {
           btn.setButtonText("连接中…").setDisabled(true);
-          const ok = await this.plugin.login();
+          const { ok, reason } = await this.plugin.login();
           btn.setDisabled(false);
           if (ok) {
             btn.setButtonText("✓ 成功");
             new Notice("lqssblog: 登录成功");
           } else {
             btn.setButtonText("✗ 失败");
-            new Notice("lqssblog: 登录失败，请检查用户名/密码/博客地址");
+            new Notice(`lqssblog: 登录失败 — ${reason}`, 8000);
           }
-          setTimeout(() => btn.setButtonText("测试"), 3000);
+          setTimeout(() => btn.setButtonText("测试"), 4000);
         })
       );
   }
