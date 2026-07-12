@@ -44,6 +44,12 @@ const DEFAULT_SETTINGS: LqssblogSettings = {
   token: "",
 };
 
+const ZONE_SUBFOLDER: Record<Zone, string> = {
+  ANIME: "anime",
+  REAL: "real",
+  FOUR: "four",
+};
+
 // ===== Plugin =====
 
 export default class LqssblogPlugin extends Plugin {
@@ -311,7 +317,7 @@ export default class LqssblogPlugin extends Plugin {
         await this.app.vault.modify(existing, content);
       } else {
         const path = await this.uniquePath(
-          `${this.settings.syncFolder}/${safeFilename(post.title) || post.id}.md`
+          `${this.zoneFolder(post.zone)}/${safeFilename(post.title) || post.id}.md`
         );
         await this.app.vault.create(path, content);
       }
@@ -344,9 +350,11 @@ export default class LqssblogPlugin extends Plugin {
       const zone = fm["blog-zone"] as Zone | undefined;
 
       if (!blogId) {
-        // New local file in sync folder with zone set → push to create
-        if (zone && file.path.startsWith(this.settings.syncFolder + "/")) {
-          const ok = await this.doPush(file, fm as Record<string, unknown>, undefined, zone);
+        // New local file in a zone subfolder with blog-zone set → push to create
+        const inZoneFolder =
+          zone && file.path.startsWith(this.zoneFolder(zone) + "/");
+        if (inZoneFolder) {
+          const ok = await this.doPush(file, fm as Record<string, unknown>, undefined, zone!);
           if (ok) created++;
         }
         continue;
@@ -391,7 +399,7 @@ export default class LqssblogPlugin extends Plugin {
     for (const post of posts) {
       if (processedIds.has(post.id)) continue;
       const path = await this.uniquePath(
-        `${this.settings.syncFolder}/${safeFilename(post.title) || post.id}.md`
+        `${this.zoneFolder(post.zone)}/${safeFilename(post.title) || post.id}.md`
       );
       await this.app.vault.create(path, buildNoteContent(post));
       pulled++;
@@ -418,10 +426,20 @@ export default class LqssblogPlugin extends Plugin {
     return null;
   }
 
+  zoneFolder(zone: Zone): string {
+    return `${this.settings.syncFolder}/${ZONE_SUBFOLDER[zone]}`;
+  }
+
   async ensureSyncFolder(): Promise<void> {
-    const folder = this.settings.syncFolder;
-    if (!(await this.app.vault.adapter.exists(folder))) {
-      await this.app.vault.createFolder(folder);
+    const root = this.settings.syncFolder;
+    if (!(await this.app.vault.adapter.exists(root))) {
+      await this.app.vault.createFolder(root);
+    }
+    for (const sub of Object.values(ZONE_SUBFOLDER)) {
+      const path = `${root}/${sub}`;
+      if (!(await this.app.vault.adapter.exists(path))) {
+        await this.app.vault.createFolder(path);
+      }
     }
   }
 
@@ -650,8 +668,8 @@ class LqssblogSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("同步文件夹")
-      .setDesc("拉取的文章保存到此文件夹（相对 vault 根目录）")
+      .setName("同步根文件夹")
+      .setDesc("文章按分区保存到子文件夹：blog/anime · blog/real · blog/four")
       .addText((t) =>
         t
           .setPlaceholder("blog")
