@@ -275,7 +275,6 @@ export default class LqssblogPlugin extends Plugin {
     const inlineTags = (cache?.tags ?? []).map((t) => t.tag.replace(/^#/, ""));
     const tags = [...new Set([...fmTags, ...inlineTags])];
 
-    const now = new Date().toISOString();
     const data = { title, content: body, zone, visibility, published, tags };
 
     if (blogId) {
@@ -299,6 +298,10 @@ export default class LqssblogPlugin extends Plugin {
       }
       blogId = result.post.id;
     }
+
+    // Capture now AFTER API response — ensures blog-synced-at >= blog.updatedAt
+    // (server sets updatedAt before we receive the response, so this is always safe)
+    const now = new Date().toISOString();
 
     await this.app.fileManager.processFrontMatter(file, (f) => {
       f["blog-id"] = blogId;
@@ -415,8 +418,11 @@ export default class LqssblogPlugin extends Plugin {
       const localNewer = localUpdatedAt > lastSyncTime + BUFFER;
 
       if (blogNewer && localNewer) {
+        // Conflict: local wins — push local version over remote
         conflicts++;
-        new Notice(`lqssblog: ⚠ 冲突 —「${file.basename}」本地和远端都有更改，已跳过`);
+        const zone = (fm["blog-zone"] as Zone | undefined) ?? (blogPost.zone as Zone);
+        const ok = await this.doPush(file, fm as Record<string, unknown>, blogId, zone);
+        if (ok) pushed++;
         continue;
       }
 
